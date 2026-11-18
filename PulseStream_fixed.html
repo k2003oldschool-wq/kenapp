@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PulseStream</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:Inter,system-ui,sans-serif;background:#0c0c0e;color:#f5f5f7;margin:0;height:100dvh;overflow:hidden;user-select:none}
+#bg{position:fixed;inset:-15%;background-size:cover;background-position:center;filter:blur(90px) saturate(1.6) brightness(.35);transition:background-image 1s;z-index:0;pointer-events:none}
+.glass{background:rgba(18,18,22,.8);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);border:1px solid rgba(255,255,255,.08)}
+.sl{-webkit-appearance:none;appearance:none;background:rgba(255,255,255,.18);height:4px;border-radius:9px;outline:0;cursor:pointer}
+.sl::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.5)}
+.sl::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff}
+#full{transition:transform .38s cubic-bezier(.16,1,.3,1)}
+#full.closed{transform:translateY(100%);pointer-events:none}
+.vwrap{position:relative;width:32px;height:150px}
+.vwrap input{position:absolute;width:150px;left:-59px;top:73px;transform:rotate(-90deg)}
+#cover-wrap.paused{transform:scale(.88)}
+.pill{padding:.4rem .8rem;border-radius:999px;font-size:.75rem;font-weight:600;background:rgba(255,255,255,.1);color:#d4d4d8;cursor:pointer}
+.pill.on{background:#1ed760;color:#000}
+.tab.on{background:#fff;color:#000}
+.row:hover{background:rgba(255,255,255,.06)}
+@keyframes b1{0%,100%{height:4px}50%{height:14px}}@keyframes b2{0%,100%{height:12px}50%{height:5px}}
+.eqi{display:inline-flex;align-items:flex-end;gap:2px;height:14px}.eqi i{width:3px;background:#1ed760;animation:b1 .7s infinite}.eqi i:nth-child(2){animation:b2 .6s infinite}
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="toasts" class="fixed top-4 inset-x-4 z-50 flex flex-col items-center gap-2 pointer-events-none"></div>
+<div style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;overflow:hidden"><div id="yt"></div></div>
+<audio id="aud" crossorigin="anonymous" preload="auto"></audio>
+
+<div class="relative z-10 h-full flex flex-col max-w-3xl mx-auto">
+  <header class="px-4 pb-2" style="padding-top:max(.75rem,env(safe-area-inset-top))">
+    <form id="sf" class="flex gap-2">
+      <div class="relative flex-1">
+        <input id="si" type="text" autocomplete="off" placeholder="Трек, исполнитель или ссылка YouTube" class="w-full bg-white/10 focus:bg-white/15 border border-white/10 rounded-full pl-4 pr-4 py-2.5 text-sm outline-none placeholder-zinc-400" style="user-select:text">
+      </div>
+      <button class="px-5 rounded-full bg-[#1ed760] text-black font-bold text-sm">Найти</button>
+    </form>
+  </header>
+
+  <main id="scroll" class="flex-1 overflow-y-auto px-4 pb-48">
+    <section id="v-home" class="flex flex-col gap-6 pt-2">
+      <div class="rounded-2xl p-5 bg-gradient-to-br from-emerald-900/40 to-purple-900/30 border border-white/10">
+        <h1 class="text-xl font-extrabold tracking-tight">Музыка из YouTube — без видео</h1>
+        <p class="text-xs text-zinc-300 mt-1.5">Найдите трек или вставьте ссылку. Эквалайзер и концертный реверб — в полном плеере.</p>
+      </div>
+      <div>
+        <h2 class="font-bold mb-2.5">Подборки</h2>
+        <div class="grid grid-cols-2 gap-3" id="genres"></div>
+      </div>
+      <div id="home-off" class="hidden"><h2 class="font-bold mb-2.5">Сохранённые</h2><div id="home-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div></div>
+    </section>
+
+    <section id="v-search" class="hidden pt-2">
+      <h2 id="s-title" class="text-lg font-bold">Поиск</h2>
+      <p id="s-sub" class="text-xs text-zinc-400 mb-3"></p>
+      <div id="s-load" class="hidden flex flex-col gap-2"><div class="h-14 rounded-xl bg-white/5 animate-pulse"></div><div class="h-14 rounded-xl bg-white/5 animate-pulse"></div><div class="h-14 rounded-xl bg-white/5 animate-pulse"></div></div>
+      <div id="res" class="flex flex-col gap-1"></div>
+      <button id="s-key" class="hidden mt-4 pill">Ввести ключ YouTube API (надёжный поиск)</button>
+    </section>
+
+    <section id="v-fav" class="hidden pt-2">
+      <div class="flex items-center justify-between mb-3">
+        <div><h2 class="text-lg font-bold">Избранное</h2><p id="fav-sub" class="text-xs text-zinc-400"></p></div>
+        <button id="fav-play" class="pill on">▶ Играть всё</button>
+      </div>
+      <div id="fav" class="flex flex-col gap-1"></div>
+    </section>
+
+    <section id="v-library" class="hidden pt-2">
+      <div class="flex items-center justify-between mb-3">
+        <div><h2 class="text-lg font-bold">Медиатека</h2><p id="l-sub" class="text-xs text-zinc-400"></p></div>
+        <label class="pill">+ MP3/WAV<input id="upl" type="file" accept="audio/*" multiple class="hidden"></label>
+      </div>
+      <div id="lib" class="flex flex-col gap-1"></div>
+    </section>
+  </main>
+</div>
+
+<!-- MINI PLAYER -->
+<div id="mini" class="hidden fixed inset-x-0 z-30 px-2" style="bottom:calc(62px + env(safe-area-inset-bottom))">
+  <div class="max-w-3xl mx-auto">
+    <div id="mini-card" class="glass rounded-2xl relative overflow-hidden cursor-pointer flex items-center gap-3 p-2 pr-3 shadow-2xl shadow-black/60">
+      <img id="m-cover" class="w-12 h-12 rounded-xl object-cover bg-zinc-900 shrink-0">
+      <div class="min-w-0 flex-1">
+        <div id="m-title" class="text-sm font-semibold truncate"></div>
+        <div id="m-artist" class="text-xs text-zinc-400 truncate"></div>
+      </div>
+      <button id="m-play" class="w-10 h-10 flex items-center justify-center text-white"><svg class="ic-play w-7 h-7" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><svg class="ic-pause w-7 h-7 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg></button>
+      <button id="m-next" class="w-9 h-10 flex items-center justify-center text-white"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6zM16 6v12h2V6z"/></svg></button>
+      <div class="absolute left-0 right-0 bottom-0 h-[3px] bg-white/10"><div id="m-bar" class="h-full bg-[#1ed760]" style="width:0"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="fixed bottom-0 inset-x-0 z-30 glass border-x-0 border-b-0" style="padding-bottom:env(safe-area-inset-bottom)">
+  <div class="max-w-3xl mx-auto grid grid-cols-4 h-[62px] text-[11px] font-semibold">
+    <button data-nav="home" class="nav flex flex-col items-center justify-center gap-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10"/></svg>Обзор</button>
+    <button data-nav="search" class="nav flex flex-col items-center justify-center gap-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>Поиск</button>
+    <button data-nav="fav" class="nav flex flex-col items-center justify-center gap-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.3 6.3a5 5 0 017.1 0L12 7l.6-.7a5 5 0 117.1 7.1L12 21l-7.7-7.6a5 5 0 010-7.1z"/></svg>Избранное</button>
+    <button data-nav="library" class="nav flex flex-col items-center justify-center gap-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19a3 3 0 11-6 0 3 3 0 016 0zm12-3a3 3 0 11-6 0 3 3 0 016 0z"/></svg>Медиатека <span id="l-count" class="hidden"></span></button>
+  </div>
+</nav>
+
+<!-- FULL PLAYER -->
+<div id="full" class="closed fixed inset-0 z-40 bg-[#0a0a0d]/95 backdrop-blur-3xl" style="padding-top:env(safe-area-inset-top)">
+ <div class="max-w-xl w-full mx-auto flex flex-col h-full px-5">
+  <div class="flex items-center justify-between py-3 relative">
+    <button id="f-close" class="w-10 h-10 rounded-full bg-white/10 text-xl leading-none">⌄</button>
+    <span class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">Сейчас играет</span>
+    <button id="f-menu" class="w-10 h-10 rounded-full bg-white/10 text-xl leading-none">⋯</button>
+    <div id="menu" class="hidden absolute right-0 top-14 w-64 glass rounded-2xl p-1.5 z-10 text-sm shadow-2xl">
+      <button data-m="save" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10">⬇ Сохранить оффлайн</button>
+      <button data-m="copy" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10">🔗 Скопировать ссылку</button>
+      <button data-m="yt" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10">↗ Открыть в YouTube</button>
+      <button data-m="queue" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10">☰ Очередь</button>
+      <button data-m="off" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10">▶ Только официальный плеер YouTube вкл/выкл</button>
+      <button data-m="inst" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10">⚡ Мгновенный старт вкл/выкл</button>
+      <button data-m="sleep" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10">⏲ Таймер сна (15/30/60/выкл)</button>
+      <button data-m="key" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10">🔑 Ключ YouTube API</button>
+    </div>
+  </div>
+
+  <div class="flex-1 min-h-0 overflow-y-auto">
+    <div id="p-player" class="flex flex-col items-center gap-5 py-2">
+      <div id="cover-wrap" class="w-full max-w-[20rem] aspect-square rounded-3xl overflow-hidden shadow-2xl shadow-black/80 border border-white/10 transition-transform duration-500"><img id="f-cover" class="w-full h-full object-cover"></div>
+      <div class="w-full flex items-center gap-3"><div class="min-w-0 flex-1"><div id="f-title" class="text-xl font-extrabold truncate"></div><div id="f-artist" class="text-sm text-zinc-400 truncate mt-0.5"></div></div><button id="f-heart" class="w-11 h-11 rounded-full bg-white/10 text-2xl leading-none shrink-0">♡</button></div>
+      <canvas id="viz" class="w-full h-10"></canvas>
+    </div>
+
+    <div id="p-eq" class="hidden flex flex-col gap-5 py-2">
+      <div id="eqnote" class="text-xs rounded-xl px-3 py-2 bg-white/5 text-zinc-300"></div>
+      <div class="flex flex-wrap gap-1.5" id="presets"></div>
+      <div class="flex justify-between px-1" id="bands"></div>
+      <div class="pt-4 border-t border-white/10 flex flex-col gap-3">
+        <div class="flex justify-between text-xs font-semibold"><span>Эффект зала (реверб)</span><span id="rev-v" class="text-[#1ed760]">0%</span></div>
+        <input id="rev" type="range" min="0" max="100" value="0" class="sl w-full">
+        <div class="flex flex-wrap gap-1.5" id="halls"></div>
+      </div>
+    </div>
+
+    <div id="p-queue" class="hidden py-2"><div id="queue" class="flex flex-col gap-1"></div></div>
+  </div>
+
+  <div class="grid grid-cols-3 gap-1 p-1 rounded-full bg-white/5 text-xs font-semibold my-2">
+    <button data-tab="player" class="tab on rounded-full py-2">Плеер</button>
+    <button data-tab="eq" class="tab rounded-full py-2">Эквалайзер</button>
+    <button data-tab="queue" class="tab rounded-full py-2">Очередь</button>
+  </div>
+
+  <div class="pt-2 flex flex-col gap-3" style="padding-bottom:max(1.25rem,env(safe-area-inset-bottom))">
+    <div class="flex items-center gap-3 text-xs text-zinc-400">
+      <span id="t-cur" class="w-10 text-right tabular-nums">0:00</span>
+      <input id="seek" type="range" min="0" max="100" step="0.1" value="0" class="sl flex-1">
+      <span id="t-dur" class="w-10 tabular-nums">0:00</span>
+    </div>
+    <div class="flex items-center justify-between px-2">
+      <button id="b-shuf" class="w-10 h-10 text-zinc-400"><svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
+      <button id="b-prev" class="w-12 h-12"><svg class="w-8 h-8 mx-auto" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button id="b-play" class="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-lg active:scale-95 transition"><svg class="ic-play w-8 h-8 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><svg class="ic-pause w-8 h-8 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg></button>
+      <button id="b-next" class="w-12 h-12"><svg class="w-8 h-8 mx-auto" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6zM16 6v12h2V6z"/></svg></button>
+      <button id="b-rep" class="w-10 h-10 text-zinc-400 relative"><svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg><span id="rep1" class="hidden absolute top-1 right-1 text-[9px] font-bold text-[#1ed760]">1</span></button>
+    </div>
+    <div class="flex items-center gap-3 text-zinc-400 px-2">
+      <span class="text-xs">🔈</span><input id="vol" type="range" min="0" max="100" value="85" class="sl flex-1"><span class="text-xs">🔊</span>
+    </div>
+  </div>
+ </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id), aud=$('aud');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=s=>{if(!s||!isFinite(s))return'0:00';s|=0;return(s/60|0)+':'+String(s%60).padStart(2,'0')};
+const FB='data:image/svg+xml;charset=UTF-8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#064e3b"/><stop offset="1" stop-color="#09090b"/></linearGradient></defs><rect width="400" height="400" fill="url(#g)"/><circle cx="200" cy="200" r="72" fill="none" stroke="#1ed760" stroke-width="3" stroke-opacity=".6"/><circle cx="200" cy="200" r="18" fill="#1ed760"/></svg>');
+const SILENT='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+const S={official:false,instant:true,swapping:false,ytFailed:false,ytOk:false,failed:new Set(),fails:0,q:[],i:-1,cur:null,playing:false,eng:'none',shuf:false,rep:'off',eq:[0,0,0,0,0],rev:0,hall:'hall',lib:[],res:[],dl:new Set()};
+
+const savePrefs=()=>{try{localStorage.setItem('prefs',JSON.stringify({eq:S.eq,rev:S.rev,hall:S.hall,vol:+$('vol').value,instant:S.instant,official:S.official}))}catch{}};
+/* ---------- toast ---------- */
+function toast(m,warn){const e=document.createElement('div');e.className='glass rounded-2xl px-4 py-2.5 text-xs font-medium shadow-2xl transition-all '+(warn?'border-amber-400/50':'border-[#1ed760]/50');e.textContent=m;$('toasts').appendChild(e);setTimeout(()=>{e.style.opacity=0;setTimeout(()=>e.remove(),300)},3800)}
+
+/* ---------- IndexedDB ---------- */
+let FAV=[];try{FAV=JSON.parse(localStorage.getItem('favs')||'[]')}catch{}
+const isFav=t=>!!t&&FAV.some(x=>x.id===t.id);
+function toggleFav(t){
+  if(!t)return;if(!t.videoId)return toast('Локальный файл уже в медиатеке');
+  if(isFav(t)){FAV=FAV.filter(x=>x.id!==t.id);toast('Убрано из избранного')}
+  else{FAV.unshift({id:t.id,videoId:t.videoId,title:t.title,artist:t.artist,duration:t.duration||0,thumbnail:t.thumbnail||null});toast('Добавлено в избранное ♥')}
+  try{localStorage.setItem('favs',JSON.stringify(FAV))}catch{toast('Не удалось сохранить избранное','warn')}
+  renderAll();
+}
+let db;const ST='offline_tracks';
+const dbo=()=>db?Promise.resolve(db):new Promise((ok,no)=>{const r=indexedDB.open('MusicVaultDB',1);r.onupgradeneeded=e=>{if(!e.target.result.objectStoreNames.contains(ST))e.target.result.createObjectStore(ST,{keyPath:'id'})};r.onsuccess=e=>ok(db=e.target.result);r.onerror=()=>no(r.error)});
+const dbq=async(mode,fn)=>{await dbo();return new Promise((ok,no)=>{const r=fn(db.transaction(ST,mode).objectStore(ST));r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})};
+const dbPut=t=>dbq('readwrite',s=>s.put({id:t.id,videoId:t.videoId||null,title:t.title,artist:t.artist,duration:t.duration||0,thumbnail:t.thumbnail||null,audioBlob:t.audioBlob||null,savedAt:Date.now()}));
+const dbDel=id=>dbq('readwrite',s=>s.delete(id));
+async function loadLib(){try{S.lib=(await dbq('readonly',s=>s.getAll())).sort((a,b)=>b.savedAt-a.savedAt)}catch{S.lib=[]}renderAll()}
+
+/* ---------- network ---------- */
+const tf=(u,ms=6000)=>{const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(u,{signal:c.signal}).finally(()=>clearTimeout(t))};
+const jf=async(u,ms)=>{const r=await tf(u,ms);if(!r.ok)throw 0;return r.json()};
+let PIPED=['https://pipedapi.kavin.rocks','https://api.piped.private.coffee','https://pipedapi.adminforge.de','https://pipedapi.leptons.xyz','https://pipedapi.nosebs.ru'];
+let INV=['https://inv.nadeko.net','https://invidious.nerdvpn.de','https://yewtu.be','https://invidious.jing.rocks','https://yt.artemislena.eu'];
+async function loadInstances(){
+  try{const l=await jf('https://piped-instances.kavin.rocks/',5000);PIPED=[...new Set([...l.map(x=>x.api_url).filter(Boolean),...PIPED])].slice(0,9)}catch{}
+  try{const l=await jf('https://api.invidious.io/instances.json?sort_type=health',5000);INV=[...new Set([...l.filter(x=>x[1].api&&x[1].cors&&x[1].type==='https').map(x=>x[1].uri),...INV])].slice(0,9)}catch{}
+}
+const ytId=s=>{s=(s||'').trim();if(/^[\w-]{11}$/.test(s))return s;const m=s.match(/(?:youtu\.be\/|[?&]v=|embed\/|shorts\/)([\w-]{11})/);return m?m[1]:null};
+const thumb=id=>`https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+const mk=(id,title,artist,dur)=>({id:'yt_'+id,videoId:id,title,artist:artist||'YouTube',duration:+dur||0,thumbnail:thumb(id)});
+const dec=t=>new DOMParser().parseFromString(t,'text/html').body.textContent;
+const getKey=()=>{try{return localStorage.getItem('yt_key')||''}catch{return''}};
+function setKey(){const k=prompt('YouTube Data API v3 ключ (бесплатно в Google Cloud Console). Пусто — удалить:',getKey());if(k===null)return;try{localStorage.setItem('yt_key',k.trim())}catch{}toast(k.trim()?'Ключ сохранён':'Ключ удалён')}
+
+async function oembed(id){
+  try{const d=await jf('https://www.youtube.com/oembed?url='+encodeURIComponent('https://www.youtube.com/watch?v='+id)+'&format=json',5000);return mk(id,d.title,d.author_name)}
+  catch{return mk(id,'YouTube ('+id+')','YouTube')}
+}
+async function search(q){
+  const id=ytId(q);if(id)return[await oembed(id)];
+  const e=encodeURIComponent(q),jobs=[];
+  const key=getKey();
+  if(key)jobs.push((async()=>{const d=await jf(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=25&q=${e}&key=${key}`,8000);const r=(d.items||[]).map(i=>mk(i.id.videoId,dec(i.snippet.title),dec(i.snippet.channelTitle)));if(!r.length)throw 0;return r})());
+  PIPED.forEach(b=>jobs.push((async()=>{const d=await jf(`${b}/search?q=${e}&filter=videos`,7000);const r=(d.items||[]).filter(x=>x.url&&x.url.includes('v=')&&x.duration>0).slice(0,25).map(x=>mk(ytId(x.url),x.title,x.uploaderName,x.duration));if(!r.length)throw 0;return r})()));
+  INV.forEach(b=>jobs.push((async()=>{const d=await jf(`${b}/api/v1/search?q=${e}&type=video`,7000);const r=d.filter(v=>v.videoId&&v.lengthSeconds>0).slice(0,25).map(v=>mk(v.videoId,v.title,v.author,v.lengthSeconds));if(!r.length)throw 0;return r})()));
+  jobs.push((async()=>{ // запасной вариант: страница поиска YouTube через CORS-прокси
+    const r=await tf('https://corsproxy.io/?url='+encodeURIComponent('https://www.youtube.com/results?hl=ru&sp=EgIQAQ%3D%3D&search_query='+q),10000);
+    const m=(await r.text()).match(/var ytInitialData = (\{.*?\});<\/script>/s);if(!m)throw 0;
+    const out=[];(function w(o){if(!o||typeof o!=='object'||out.length>=25)return;const v=o.videoRenderer;if(v&&v.videoId&&v.lengthText){const p=v.lengthText.simpleText.split(':').reverse().reduce((a,x,i)=>a+x*60**i,0);out.push(mk(v.videoId,v.title.runs[0].text,v.ownerText?.runs[0].text,p));return}for(const k in o)w(o[k])})(JSON.parse(m[1]));
+    if(!out.length)throw 0;return out})());
+  return Promise.any(jobs);
+}
+
+const streamCache={};
+const goodGet=()=>{try{return JSON.parse(localStorage.getItem('good')||'[]')}catch{return[]}};
+const goodAdd=b=>{try{localStorage.setItem('good',JSON.stringify([b,...goodGet().filter(x=>x!==b)].slice(0,4)))}catch{}};
+const byGood=l=>{const g=goodGet(),r=x=>g.indexOf(x)<0?9:g.indexOf(x);return[...l].sort((x,y)=>r(x)-r(y))};
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const bad=new Set(),urlBase={},streamUrl={};
+// проверка: адрес реально играется (CORS, формат) — иначе эквалайзер мог бы молчать
+const probe=(u,ms=7000)=>new Promise((ok,no)=>{const a=new Audio();a.crossOrigin='anonymous';a.preload='metadata';
+  const fin=(f,v)=>{clearTimeout(t);a.onloadedmetadata=a.onerror=null;a.removeAttribute('src');a.load();f(v)};
+  const t=setTimeout(()=>fin(no),ms);a.onloadedmetadata=()=>fin(ok,u);a.onerror=()=>fin(no);a.src=u});
+const dropStream=id=>{delete streamCache[id];delete streamUrl[id]};
+function getStream(id,fresh){
+  if(fresh)dropStream(id);
+  return streamCache[id]||(streamCache[id]=resolveStream(id).catch(e=>{delete streamCache[id];throw e}));
+}
+async function resolveStream(id){
+  const score=f=>(/mp4|m4a/.test(f.t)?1e6:0)+(f.b||0),jobs=[];
+  let done=false;
+  const add=(base,i,fn)=>jobs.push((async()=>{await wait(i*250);if(done)throw 0;const u=await fn();if(done||bad.has(u))throw 0;await probe(u);urlBase[u]=base;return u})());
+  byGood(PIPED).slice(0,5).forEach((b,i)=>add(b,i,async()=>{
+    const d=await jf(`${b}/streams/${id}`,7000);
+    const a=(d.audioStreams||[]).filter(s=>s.url&&/audio\/(mp4|webm)/.test(s.mimeType||'')).map(s=>({u:s.url,t:s.mimeType,b:s.bitrate}));
+    if(!a.length)throw 0;a.sort((x,y)=>score(y)-score(x));const u=new URL(a[0].u);
+    if(/googlevideo\.com$/.test(u.hostname)&&d.proxyUrl){const p=new URL(d.proxyUrl);u.searchParams.set('host',u.host);u.host=p.host}
+    return u.href}));
+  byGood(INV).slice(0,5).forEach((b,i)=>{
+    add(b,i,async()=>{
+      const d=await jf(`${b}/api/v1/videos/${id}?local=true`,7000);
+      const a=(d.adaptiveFormats||[]).filter(f=>f.url&&(f.type||'').startsWith('audio/')).map(f=>({u:f.url,t:f.type,b:+f.bitrate}));
+      if(!a.length)throw 0;a.sort((x,y)=>score(y)-score(x));return a[0].u.startsWith('/')?b+a[0].u:a[0].u});
+    add(b,i,async()=>`${b}/latest_version?id=${id}&itag=140&local=true`);
+  });
+  try{const u=await Promise.race([Promise.any(jobs),wait(14000).then(()=>{throw 0})]);return streamUrl[id]=u}
+  finally{done=true}
+}
+
+/* ---------- Web Audio: EQ + reverb ---------- */
+let ctx,eqN=[],conv,dry,wet,an,fft;
+const HALLS={room:['Комната',.9,3],hall:['Концертный зал',2.8,2.2],cathedral:['Собор',5.5,1.7]};
+function makeIR(k){
+  const [,sec,pw]=HALLS[k],sr=ctx.sampleRate,len=sr*sec|0,pre=sr*.02|0,b=ctx.createBuffer(2,len,sr);
+  for(let c=0;c<2;c++){const d=b.getChannelData(c);let lp=0;
+    for(let i=pre;i<len;i++){const t=(i-pre)/(len-pre);lp+=((Math.random()*2-1)-lp)*(1-(.15+.8*t)*.9);d[i]=lp*Math.pow(1-t,pw)}}
+  return b;
+}
+function applyRev(){if(!wet)return;const v=S.rev/100;dry.gain.value=1-v*.35;wet.gain.value=v*1.5}
+function dsp(){
+  if(ctx){if(ctx.state==='suspended')ctx.resume();return}
+  try{
+    ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const src=ctx.createMediaElementSource(aud);
+    eqN=[60,230,910,4000,14000].map((f,i)=>{const n=ctx.createBiquadFilter();n.type=i==0?'lowshelf':i==4?'highshelf':'peaking';n.frequency.value=f;n.Q.value=1.1;n.gain.value=S.eq[i];return n});
+    let n=src;eqN.forEach(f=>{n.connect(f);n=f});
+    conv=ctx.createConvolver();conv.buffer=makeIR(S.hall);
+    dry=ctx.createGain();wet=ctx.createGain();const mix=ctx.createGain();
+    const lim=ctx.createDynamicsCompressor();lim.threshold.value=-3;lim.knee.value=3;lim.ratio.value=12;lim.attack.value=.003;lim.release.value=.15;
+    an=ctx.createAnalyser();an.fftSize=128;fft=new Uint8Array(an.frequencyBinCount);
+    n.connect(dry);n.connect(conv);conv.connect(wet);dry.connect(mix);wet.connect(mix);mix.connect(lim);lim.connect(an);an.connect(ctx.destination);
+    applyRev();
+  }catch(e){console.warn('WebAudio',e);ctx=null}
+}
+
+/* ---------- YouTube iframe (запасной движок) ---------- */
+let yt=null,ytReady=false,ytPending=null;
+window.onYouTubeIframeAPIReady=()=>{yt=new YT.Player('yt',{height:'1',width:'1',playerVars:Object.assign({autoplay:1,controls:0,playsinline:1},/^https?:/.test(location.protocol)?{origin:location.origin}:{}),events:{
+  onReady:()=>{ytReady=true;yt.setVolume(+$('vol').value);if(ytPending){yt.loadVideoById(ytPending);ytPending=null}},
+  onStateChange:e=>{if(S.eng!=='yt')return;if(e.data===1){S.fails=0;S.ytOk=true;setPlaying(true)}else if(e.data===2)setPlaying(false);else if(e.data===0)onEnd()},
+  onError:e=>ytError(e&&e.data)}})};
+const s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';document.head.appendChild(s);
+
+/* ---------- playback ---------- */
+let blobUrl=null,tok=0,unlocked=false;
+function setPlaying(p){S.playing=p;document.querySelectorAll('.ic-play').forEach(e=>e.classList.toggle('hidden',p));document.querySelectorAll('.ic-pause').forEach(e=>e.classList.toggle('hidden',!p));$('cover-wrap').classList.toggle('paused',!p);if('mediaSession' in navigator)navigator.mediaSession.playbackState=p?'playing':'paused';renderAll()}
+function eqNote(){
+  const n=$('eqnote');
+  if(S.eng==='yt'&&S.official){n.className='text-xs rounded-xl px-3 py-2 bg-white/5 text-zinc-300';n.textContent='Включён режим «только официальный плеер YouTube»: эквалайзер и реверб недоступны. Отключить режим можно в меню ⋯.'}else if(S.eng==='yt'&&S.swapping){n.className='text-xs rounded-xl px-3 py-2 bg-white/5 text-zinc-300';n.textContent='Трек уже играет. Загружаю прямой поток — эквалайзер и реверб включатся через пару секунд.'}else if(S.eng==='yt'){n.className='text-xs rounded-xl px-3 py-2 bg-amber-500/15 text-amber-200';n.innerHTML='Трек играет через встроенный плеер YouTube — браузер не даёт обработать его звук, поэтому эквалайзер и реверб не слышны.<button id="retry" class="pill on mt-2 block">Попробовать прямой поток ещё раз</button>'}
+  else{n.className='text-xs rounded-xl px-3 py-2 bg-[#1ed760]/15 text-[#7dffa8]';n.textContent='✓ Эквалайзер и реверб работают для этого трека'}
+}
+function ytFallback(t){
+  S.eng='yt';S.ytOk=false;aud.removeAttribute('src');aud.load();eqNote();
+  if(ytReady){
+    yt.setVolume(+$('vol').value);
+    yt.loadVideoById({videoId:t.videoId,autoplay:1});
+    setTimeout(()=>{try{if(S.eng==='yt'&&S.cur&&S.cur.videoId===t.videoId)yt.playVideo()}catch{}},700);
+  }else ytPending=t.videoId;
+  setPlaying(true);armYT(tok);toast('Играю через YouTube внутри приложения','warn');
+}
+// если встроенный плеер молчит дольше 9 с — считаем это ошибкой
+function armYT(my){setTimeout(()=>{if(my===tok&&S.eng==='yt'&&!S.ytOk)ytError('timeout')},9000)}
+// прямой поток «играет», но звука нет или он завис — возвращаемся на YouTube
+function watchStream(t,my){
+  let n=0,t0=aud.currentTime,heard=false;
+  const iv=setInterval(()=>{
+    if(my!==tok||S.eng!=='stream'){clearInterval(iv);return}
+    if(!S.playing)return;
+    if(an&&!heard){an.getByteFrequencyData(fft);if(fft.some(v=>v>0))heard=true}
+    n++;
+    if(aud.currentTime-t0>.8&&(heard||!an)){clearInterval(iv);return}
+    if(n>=12){clearInterval(iv);revertToYT(t,my)}
+  },400);
+}
+function revertToYT(t,my){
+  if(my!==tok)return;const pos=aud.currentTime||0;
+  bad.add(aud.src);dropStream(t.videoId);aud.pause();aud.removeAttribute('src');aud.load();
+  S.eng='yt';S.swapping=false;S.ytOk=false;eqNote();
+  toast('Прямой поток не звучит — переключаюсь на YouTube','warn');
+  if(ytReady){yt.setVolume(+$('vol').value);yt.loadVideoById({videoId:t.videoId,startSeconds:pos})}else ytPending=t.videoId;
+  setPlaying(true);armYT(my);
+}
+let busy=false,errId=null;
+const withTO=(p,ms)=>Promise.race([p,wait(ms).then(()=>{throw new Error('timeout')})]);
+async function play(t,list){
+  if(!t)return;
+  if(!unlocked){unlocked=true;aud.src=SILENT;aud.play().catch(()=>{})}
+  dsp();
+  if(list&&list.length)S.q=[...list];else if(!S.q.some(x=>x.id===t.id))S.q.push(t);
+  S.cur=t;S.i=S.q.findIndex(x=>x.id===t.id);const my=++tok;busy=true;S.swapping=false;S.ytFailed=false;
+  const a=t.thumbnail||FB;
+  ['m-cover','f-cover'].forEach(i=>$(i).src=a);$('bg').style.backgroundImage=`url("${a}")`;
+  ['m','f'].forEach(p=>{$(p+'-title').textContent=t.title;$(p+'-artist').textContent=t.artist});
+  $('mini').classList.remove('hidden');
+  if('mediaSession' in navigator){navigator.mediaSession.metadata=new MediaMetadata({title:t.title,artist:t.artist,artwork:[{src:a,sizes:'480x360'}]})}
+  aud.pause();if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=null}
+  if(ytReady)try{yt.stopVideo()}catch{}
+  const blob=t.audioBlob||S.lib.find(v=>v.id===t.id&&v.audioBlob)?.audioBlob;
+  if(!blob&&t.videoId&&S.official){ // режим «только официальный плеер YouTube»
+    S.eng='yt';S.swapping=false;S.ytOk=false;busy=false;eqNote();
+    if(ytReady){yt.setVolume(+$('vol').value);yt.loadVideoById(t.videoId)}else ytPending=t.videoId;
+    setPlaying(true);armYT(my);renderAll();return;
+  }
+  // Сначала пробуем официальный YouTube-плеер внутри приложения.
+  if(!blob&&t.videoId){
+    busy=false;ytFallback(t);renderAll();return;
+  }
+  let ok=false,denied=false;
+  try{
+    if(blob){S.eng='local';aud.src=blobUrl=URL.createObjectURL(blob);eqNote();await withTO(aud.play(),15000);ok=true}
+    else throw 0;
+  }catch(e){if(my!==tok)return;if(e&&e.name==='NotAllowedError')denied=true}
+  if(my!==tok)return;
+  busy=false;$('m-artist').textContent=$('f-artist').textContent=t.artist;
+  if(ok){errId=null;S.fails=0;setPlaying(true);prefetchNext()}
+  else if(denied){setPlaying(false);toast('Нажмите ▶ для воспроизведения','warn')}
+  else{setPlaying(false);toast('Не удалось воспроизвести','warn')}
+  renderAll();
+}
+async function swapToStream(t,my){
+  for(let n=0;n<3;n++){
+    let u=null;
+    try{
+      u=await getStream(t.videoId,n>0);if(my!==tok)return;
+      const pos=(ytReady&&yt.getCurrentTime?yt.getCurrentTime():0)+.5;
+      aud.src=u;
+      await new Promise((ok,no)=>{const to=setTimeout(no,8000);aud.onloadedmetadata=()=>{clearTimeout(to);ok()};aud.onerror=()=>{clearTimeout(to);no()}});
+      aud.onloadedmetadata=aud.onerror=null;if(my!==tok)return;
+      try{aud.currentTime=pos}catch{}
+      if(S.playing)await withTO(aud.play(),8000);
+      if(my!==tok)return;
+      S.eng='stream';S.swapping=false;S.ytFailed=false;S.fails=0;try{yt.stopVideo()}catch{}
+      errId=null;if(urlBase[u])goodAdd(urlBase[u]);eqNote();renderAll();prefetchNext();watchStream(t,my);return;
+    }catch(e){aud.onloadedmetadata=aud.onerror=null;if(my!==tok)return;if(u)bad.add(u);if(S.ytFailed&&n>=1)break}
+  }
+  if(my===tok){S.swapping=false;eqNote();if(S.ytFailed){S.ytFailed=false;recover(t,my)}}
+}
+// Ошибка встроенного плеера YouTube (101/150 — запрет встраивания, 100 — удалено и т.д.)
+function ytError(code){
+  if(S.eng!=='yt'||!S.cur)return;
+  if(code!=='timeout')try{const vd=yt.getVideoData();if(vd&&vd.video_id&&vd.video_id!==S.cur.videoId)return}catch{}
+  S.lastErr=code;
+  if(S.swapping){S.ytFailed=true;$('m-artist').textContent=$('f-artist').textContent='Ищу прямой источник…';return}
+  recover(S.cur,tok);
+}
+// Трек не удалось включить ни напрямую, ни через YouTube: остаёмся на нём, ничего не подменяем
+async function recover(t,my){
+  if(my!==tok)return;
+  S.eng='failed';S.swapping=false;S.ytFailed=false;
+  try{yt.stopVideo()}catch{}aud.pause();
+  const why={101:'владелец запретил встраивание',150:'владелец запретил встраивание',153:'YouTube не принял встраивание',100:'видео удалено или закрыто',timeout:'нет ответа'}[S.lastErr];
+  // Пытаемся запустить этот же трек внутри приложения через доступный прямой аудиопоток.
+  if(t&&t.videoId){
+    $('m-artist').textContent=$('f-artist').textContent='Пробую альтернативный источник…';
+    try{
+      const u=await getStream(t.videoId,true);
+      if(my!==tok)return;
+      S.eng='stream';aud.src=u;eqNote();
+      await withTO(aud.play(),8000);
+      if(my!==tok)return;
+      errId=null;S.fails=0;setPlaying(true);watchStream(t,my);renderAll();
+      toast('Трек запущен через альтернативный источник','warn');
+      return;
+    }catch(e){
+      if(my!==tok)return;
+      bad.add(aud.src);dropStream(t.videoId);
+    }
+  }
+  $('m-artist').textContent=$('f-artist').textContent='Не удалось воспроизвести — нажмите ▶, чтобы повторить';
+  setPlaying(false);
+  toast('«'+t.title+'»: '+(why||'YouTube не отдаёт этот трек')+(S.lastErr?' (код '+S.lastErr+')':''),'warn');
+}
+function prefetchNext(){
+  // Прямые потоки используются только как запасной вариант, не для обычного старта
+}
+aud.addEventListener('error',()=>{
+  if(busy||S.eng!=='stream'||!S.cur?.videoId||!aud.src||aud.src.startsWith('data:'))return;
+  const t=S.cur;if(errId!==t.id){errId=t.id;bad.add(aud.src);dropStream(t.videoId);play(t)}else ytFallback(t);
+});
+aud.addEventListener('play',()=>{if(S.eng!=='yt'&&aud.src&&!aud.src.startsWith('data:'))setPlaying(true)});
+aud.addEventListener('pause',()=>{if(S.eng!=='yt'&&!busy&&aud.src&&!aud.src.startsWith('data:')&&!aud.ended)setPlaying(false)});
+aud.addEventListener('ended',()=>{if(S.eng!=='yt')onEnd()});
+function toggle(){
+  if(!S.cur)return;
+  if(S.eng==='failed'){if(S.cur.videoId)dropStream(S.cur.videoId);errId=null;S.lastErr=null;return play(S.cur)}if(ctx&&ctx.state==='suspended')ctx.resume();
+  if(S.eng==='yt'&&ytReady){S.playing?yt.pauseVideo():yt.playVideo()}
+  else{aud.paused?aud.play():aud.pause()}
+}
+function onEnd(){if(S.rep==='one'&&S.cur)return play(S.cur);next(true)}
+function next(auto){
+  if(!S.q.length)return;let n=S.i+1;
+  if(S.shuf&&S.q.length>1){do n=Math.random()*S.q.length|0;while(n===S.i)}
+  else if(n>=S.q.length){if(S.rep==='all'||!auto)n=0;else return setPlaying(false)}
+  play(S.q[n]);
+}
+function prev(){if(!S.q.length)return;if(cur()>3)return seek(0);play(S.q[(S.i-1+S.q.length)%S.q.length])}
+const cur=()=>S.eng==='yt'?(ytReady&&yt.getCurrentTime?yt.getCurrentTime():0):aud.currentTime||0;
+const dur=()=>S.eng==='yt'?(ytReady&&yt.getDuration?yt.getDuration():0):(isFinite(aud.duration)?aud.duration:0);
+const seek=t=>{if(S.eng==='yt'&&ytReady)yt.seekTo(t,true);else aud.currentTime=t};
+if('mediaSession' in navigator){const m=navigator.mediaSession;m.setActionHandler('play',toggle);m.setActionHandler('pause',toggle);m.setActionHandler('nexttrack',()=>next());m.setActionHandler('previoustrack',prev)}
+
+$('eqnote').addEventListener('click',e=>{if(e.target.closest('#retry')&&S.cur){if(S.cur.videoId)dropStream(S.cur.videoId);errId=null;play(S.cur)}});
+
+/* ---------- save offline ---------- */
+async function save(t){
+  if(!t||S.dl.has(t.id))return;
+  if(S.lib.some(v=>v.id===t.id&&v.audioBlob))return toast('Уже в медиатеке');
+  if(!t.videoId)return toast('Этот трек уже локальный');
+  S.dl.add(t.id);renderAll();toast('Скачиваю «'+t.title+'»…');
+  try{const r=await tf(await getStream(t.videoId),180000);if(!r.ok)throw 0;await dbPut({...t,audioBlob:await r.blob()});await loadLib();toast('Сохранено оффлайн ✓')}
+  catch{toast('Не удалось скачать: источник недоступен','warn')}
+  S.dl.delete(t.id);renderAll();
+}
+$('upl').addEventListener('change',async e=>{
+  for(const f of e.target.files)await dbPut({id:'local_'+f.name+f.size,title:f.name.replace(/\.[^.]+$/,''),artist:'Локальный файл',audioBlob:f});
+  e.target.value='';await loadLib();toast('Файлы добавлены');
+});
+
+/* ---------- rendering ---------- */
+function row(t,i,mode){
+  const c=S.cur?.id===t.id,sv=S.lib.some(v=>v.id===t.id&&v.audioBlob),dl=S.dl.has(t.id);
+  const hb=t.videoId&&mode!=='q'?`<button data-act="fav" class="p-2 text-lg leading-none ${isFav(t)?'text-rose-400':'text-zinc-500'}">${isFav(t)?'♥':'♡'}</button>`:'';
+  const act=hb+(mode==='lib'?'<button data-act="del" class="p-2 text-zinc-500 hover:text-rose-400">✕</button>':mode==='q'?'':`<button data-act="save" class="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full ${sv?'bg-[#1ed760]/20 text-[#1ed760]':'bg-white/10'}">${sv?'✓':dl?'…':'Скачать'}</button>`);
+  return `<div class="row flex items-center gap-3 p-2 rounded-xl ${c?'bg-white/10':''}" data-i="${i}"><div data-act="play" class="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"><img src="${esc(t.thumbnail||FB)}" onerror="this.onerror=null;this.src=FB" class="w-12 h-12 rounded-lg object-cover bg-zinc-900 shrink-0"><div class="min-w-0 flex-1"><div class="text-sm font-semibold truncate ${c?'text-[#1ed760]':''}">${esc(t.title)}</div><div class="text-xs text-zinc-400 truncate">${esc(t.artist)}${t.duration?' · '+fmt(t.duration):''}</div></div>${c&&S.playing?'<span class="eqi"><i></i><i></i><i></i></span>':''}</div>${act}</div>`;
+}
+const empty=m=>`<div class="py-14 text-center text-sm text-zinc-500">${m}</div>`;
+function renderAll(){
+  $('res').innerHTML=S.res.map((t,i)=>row(t,i,'res')).join('');
+  $('lib').innerHTML=S.lib.length?S.lib.map((t,i)=>row(t,i,'lib')).join(''):empty('Медиатека пуста. Скачайте трек или импортируйте файл.');
+  $('queue').innerHTML=S.q.length?S.q.map((t,i)=>row(t,i,'q')).join(''):empty('Очередь пуста');
+  $('fav').innerHTML=FAV.length?FAV.map((t,i)=>row(t,i,'fav')).join(''):empty('Нажмите ♡ у трека, чтобы сохранить его в избранное — без скачивания.');
+  $('fav-sub').textContent=FAV.length+' треков · без скачивания';
+  const fh=$('f-heart');fh.textContent=isFav(S.cur)?'♥':'♡';fh.style.color=isFav(S.cur)?'#fb7185':'';
+  $('l-sub').textContent=S.lib.length+' треков · хранится на устройстве';
+  $('home-off').classList.toggle('hidden',!S.lib.length);
+  $('home-grid').innerHTML=S.lib.slice(0,4).map((t,i)=>`<div data-i="${i}" class="p-2.5 rounded-2xl bg-white/5 cursor-pointer"><img src="${esc(t.thumbnail||FB)}" onerror="this.onerror=null;this.src=FB" class="w-full aspect-square rounded-xl object-cover bg-zinc-900"><div class="text-xs font-bold truncate mt-2">${esc(t.title)}</div></div>`).join('');
+}
+[['res',()=>S.res,'res'],['lib',()=>S.lib,'lib'],['fav',()=>FAV,'fav'],['queue',()=>S.q,'q']].forEach(([id,get,mode])=>$(id).addEventListener('click',async e=>{
+  const r=e.target.closest('.row');if(!r)return;const a=e.target.closest('[data-act]')?.dataset.act,t=get()[+r.dataset.i];if(!t)return;
+  if(a==='play')play(t,mode==='q'?null:get());else if(a==='save')save(t);else if(a==='fav')toggleFav(t);else if(a==='del'){await dbDel(t.id);loadLib()}
+}));
+$('home-grid').addEventListener('click',e=>{const c=e.target.closest('[data-i]');if(c)play(S.lib[+c.dataset.i],S.lib)});
+
+/* ---------- navigation & search ---------- */
+function go(v){
+  ['home','search','fav','library'].forEach(x=>$('v-'+x).classList.toggle('hidden',x!==v));
+  document.querySelectorAll('.nav').forEach(b=>{const on=b.dataset.nav===v;b.style.color=on?'#1ed760':'#a1a1aa'});
+  $('scroll').scrollTop=0;
+}
+document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.nav)));
+const GEN=[['Top Hits 2026','Топ хиты','from-emerald-600/40 to-teal-900/60'],['Phonk Music','Phonk','from-rose-600/40 to-pink-900/60'],['Lofi Hip Hop Beats','Lo-Fi','from-indigo-600/40 to-violet-900/60'],['Русский рэп новинки','Русский рэп','from-amber-600/40 to-orange-900/60']];
+$('genres').innerHTML=GEN.map(g=>`<button data-q="${g[0]}" class="h-20 rounded-2xl p-4 text-left font-bold text-sm bg-gradient-to-br ${g[2]} border border-white/10">${g[1]}</button>`).join('');
+$('genres').addEventListener('click',e=>{const b=e.target.closest('[data-q]');if(b){$('si').value=b.dataset.q;doSearch(b.dataset.q)}});
+async function doSearch(q){
+  q=q.trim();if(!q)return;go('search');$('si').blur();
+  $('s-title').textContent='«'+q+'»';$('s-sub').textContent='Ищу видео на YouTube…';$('s-load').classList.remove('hidden');$('res').innerHTML='';$('s-key').classList.add('hidden');
+  try{
+    S.res=await search(q);$('s-sub').textContent='Найдено: '+S.res.length;renderAll();
+    if(ytId(q)&&S.res.length===1)play(S.res[0],S.res);
+  }catch{
+    S.res=[];renderAll();$('s-sub').textContent='Поиск сейчас недоступен: публичные серверы не отвечают.';$('s-key').classList.remove('hidden');
+    toast('Поиск не сработал. Вставьте ссылку на видео или добавьте API-ключ','warn');
+  }
+  $('s-load').classList.add('hidden');
+}
+$('sf').addEventListener('submit',e=>{e.preventDefault();doSearch($('si').value)});
+$('s-key').addEventListener('click',setKey);
+$('f-heart').addEventListener('click',()=>toggleFav(S.cur));
+$('fav-play').addEventListener('click',()=>{if(FAV.length)play(FAV[0],FAV);else toast('Избранное пусто','warn')});
+
+/* ---------- full player ---------- */
+const full=$('full');
+const openFull=tab=>{full.classList.remove('closed');if(tab)setTab(tab)};
+$('mini-card').addEventListener('click',()=>openFull());
+$('f-close').addEventListener('click',()=>{full.classList.add('closed');$('menu').classList.add('hidden')});
+$('m-play').addEventListener('click',e=>{e.stopPropagation();toggle()});
+$('m-next').addEventListener('click',e=>{e.stopPropagation();next()});
+$('b-play').addEventListener('click',toggle);$('b-next').addEventListener('click',()=>next());$('b-prev').addEventListener('click',prev);
+let sleepT=null,sleepI=0;
+function setTab(t){
+  ['player','eq','queue'].forEach(x=>$('p-'+x).classList.toggle('hidden',x!==t));
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  if(t==='eq')eqNote();
+}
+document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+$('f-menu').addEventListener('click',()=>$('menu').classList.toggle('hidden'));
+$('menu').addEventListener('click',async e=>{
+  const m=e.target.closest('[data-m]')?.dataset.m;if(!m)return;$('menu').classList.add('hidden');
+  const t=S.cur,link=t?.videoId?'https://www.youtube.com/watch?v='+t.videoId:'';
+  if(m==='save')save(t);
+  else if(m==='copy'){if(!link)return toast('Нет ссылки','warn');try{await navigator.clipboard.writeText(link);toast('Ссылка скопирована')}catch{prompt('Ссылка:',link)}}
+  else if(m==='yt'){if(link)window.open(link,'_blank');else toast('Нет ссылки','warn')}
+  else if(m==='queue')setTab('queue');
+  else if(m==='key')setKey();
+  else if(m==='off'){S.official=!S.official;savePrefs();toast(S.official?'Только официальный плеер YouTube: вкл (без эквалайзера)':'Режим выкл: эквалайзер через прямой поток доступен')}
+  else if(m==='inst'){S.instant=!S.instant;savePrefs();toast('Мгновенный старт: '+(S.instant?'вкл':'выкл'))}
+  else if(m==='sleep'){clearTimeout(sleepT);const v=[0,15,30,60][sleepI=(sleepI+1)%4];if(v){sleepT=setTimeout(()=>{if(S.playing)toggle();toast('Таймер сна: пауза')},v*6e4);toast('Таймер сна: '+v+' мин')}else toast('Таймер сна выключен')}
+});
+$('b-shuf').addEventListener('click',()=>{S.shuf=!S.shuf;$('b-shuf').style.color=S.shuf?'#1ed760':''});
+$('b-rep').addEventListener('click',()=>{S.rep={off:'all',all:'one',one:'off'}[S.rep];$('b-rep').style.color=S.rep==='off'?'':'#1ed760';$('rep1').classList.toggle('hidden',S.rep!=='one')});
+$('vol').addEventListener('input',e=>{const v=+e.target.value;aud.volume=v/100;if(ytReady)yt.setVolume(v);savePrefs()});
+
+/* seek + time */
+let scrub=false;
+$('seek').addEventListener('input',e=>{scrub=true;$('t-cur').textContent=fmt(e.target.value/100*dur())});
+$('seek').addEventListener('change',e=>{const d=dur();if(d>0)seek(e.target.value/100*d);scrub=false});
+setInterval(()=>{
+  const c=cur(),d=dur(),p=d>0?Math.min(100,c/d*100):0;
+  $('m-bar').style.width=p+'%';$('t-dur').textContent=d>0?fmt(d):'0:00';
+  if(!scrub){$('t-cur').textContent=fmt(c);$('seek').value=p}
+},400);
+
+/* EQ UI */
+const BANDS=['60 Гц','230 Гц','910 Гц','4 кГц','14 кГц'];
+const PRE={Flat:[0,0,0,0,0],'Бас':[8,5,0,1,2],Electronic:[6,3,-2,4,6],'Вокал':[-2,1,5,4,1],Rock:[5,3,-1,3,5]};
+$('bands').innerHTML=BANDS.map((b,i)=>`<div class="flex flex-col items-center gap-2"><span id="db${i}" class="text-xs font-semibold text-[#1ed760] w-12 text-center">0 дБ</span><div class="vwrap"><input type="range" class="sl eqr" min="-12" max="12" step="1" value="0" data-b="${i}"></div><span class="text-[11px] text-zinc-400">${b}</span></div>`).join('');
+$('presets').innerHTML=Object.keys(PRE).map(k=>`<button class="pill ${k==='Flat'?'on':''}" data-p="${k}">${k}</button>`).join('');
+$('halls').innerHTML=Object.entries(HALLS).map(([k,v])=>`<button class="pill ${k===S.hall?'on':''}" data-h="${k}">${v[0]}</button>`).join('');
+function setBand(i,v,fromUI){
+  S.eq[i]=v;$('db'+i).textContent=(v>0?'+':'')+v+' дБ';if(!fromUI)document.querySelector(`.eqr[data-b="${i}"]`).value=v;
+  if(eqN[i])eqN[i].gain.value=v;savePrefs();
+}
+document.querySelectorAll('.eqr').forEach(r=>r.addEventListener('input',e=>{setBand(+e.target.dataset.b,+e.target.value,true);document.querySelectorAll('#presets .pill').forEach(p=>p.classList.remove('on'))}));
+$('presets').addEventListener('click',e=>{const b=e.target.closest('[data-p]');if(!b)return;document.querySelectorAll('#presets .pill').forEach(p=>p.classList.toggle('on',p===b));PRE[b.dataset.p].forEach((v,i)=>setBand(i,v))});
+function setRev(v){S.rev=v;$('rev').value=v;$('rev-v').textContent=v+'%';applyRev();savePrefs()}
+$('rev').addEventListener('input',e=>setRev(+e.target.value));
+$('halls').addEventListener('click',e=>{
+  const b=e.target.closest('[data-h]');if(!b)return;S.hall=b.dataset.h;
+  document.querySelectorAll('#halls .pill').forEach(p=>p.classList.toggle('on',p===b));
+  if(ctx&&conv)conv.buffer=makeIR(S.hall);if(S.rev===0)setRev(35);savePrefs();
+});
+
+/* visualizer */
+const cv=$('viz'),cx=cv.getContext('2d');let ph=0;
+(function viz(){
+  requestAnimationFrame(viz);
+  if(full.classList.contains('closed')||$('p-player').classList.contains('hidden'))return;
+  const r=cv.getBoundingClientRect();cv.width=r.width|0;cv.height=r.height|0;const w=cv.width,h=cv.height;cx.clearRect(0,0,w,h);
+  const N=32,g=4,bw=Math.max(3,(w-(N-1)*g)/N);ph+=S.playing?.12:.02;
+  const real=an&&S.playing&&S.eng!=='yt';if(real)an.getByteFrequencyData(fft);
+  for(let i=0;i<N;i++){
+    let a=.12;
+    if(real)a=Math.max(.1,fft[Math.min(fft.length-1,i*fft.length/N|0)]/255);
+    else if(S.playing)a=.2+.6*Math.abs(Math.sin(ph+i*.28));
+    const bh=a*h;cx.fillStyle=S.playing?'#1ed760':'rgba(255,255,255,.2)';cx.beginPath();cx.roundRect(i*(bw+g),(h-bh)/2,bw,bh,3);cx.fill();
+  }
+})();
+
+/* init */
+$('f-cover').src=$('m-cover').src=FB;
+try{const p=JSON.parse(localStorage.getItem('prefs')||'null');if(p){p.eq.forEach((v,i)=>setBand(i,v));setRev(p.rev||0);S.hall=p.hall||'hall';document.querySelectorAll('#halls .pill').forEach(x=>x.classList.toggle('on',x.dataset.h===S.hall));$('vol').value=p.vol??85;aud.volume=$('vol').value/100;S.instant=p.instant!==false;S.official=p.official===true;if(S.eq.some(v=>v))document.querySelectorAll('#presets .pill').forEach(x=>x.classList.remove('on'))}}catch{}
+go('home');renderAll();loadLib();loadInstances();
+/* ---------- фоновое воспроизведение (добавлено) ----------
+   Встроенный плеер YouTube браузер останавливает при блокировке экрана/сворачивании.
+   Поэтому поток заранее подгружается в <audio>, а при уходе в фон трек с того же места
+   мгновенно передаётся в него: <audio> система разрешает играть в фоне. Остальной код не затронут. */
+(()=>{
+  const setSess=()=>{try{if(navigator.audioSession&&navigator.audioSession.type!=='playback')navigator.audioSession.type='playback'}catch{}};
+  setSess();
+  let want=false,busyBg=false;const tries={},warm={};
+  async function handoff(){
+    const t=S.cur;
+    if(busyBg||!t||!t.videoId||S.official||S.eng!=='yt')return;
+    if((tries[t.id]||0)>=4)return;
+    busyBg=true;tries[t.id]=(tries[t.id]||0)+1;const my=tok;setSess();
+    let pos=0;try{pos=(ytReady&&yt.getCurrentTime?yt.getCurrentTime():0)||0}catch{}
+    let armed=false;
+    try{
+      const u=streamUrl[t.videoId]||await getStream(t.videoId);
+      if(my!==tok||S.eng!=='yt'||!document.hidden)return;
+      armed=true;
+      if(!(aud.getAttribute('src')===u&&aud.readyState>=1)){
+        aud.src=u;
+        await new Promise((ok,no)=>{
+          const to=setTimeout(()=>{rm();no()},8000),
+            good=()=>{rm();ok()},fail=()=>{rm();no()},
+            rm=()=>{clearTimeout(to);aud.removeEventListener('loadedmetadata',good);aud.removeEventListener('error',fail)};
+          aud.addEventListener('loadedmetadata',good);aud.addEventListener('error',fail);
+        });
+        if(my!==tok||S.eng!=='yt')return;
+      }
+      try{aud.currentTime=pos}catch{}
+      dsp();
+      await withTO(aud.play(),8000);
+      if(my!==tok)return;
+      S.eng='stream';S.swapping=false;S.ytFailed=false;S.fails=0;
+      try{yt.stopVideo()}catch{}
+      setPlaying(true);eqNote();renderAll();
+    }catch(e){
+      if(armed&&my===tok&&S.eng==='yt'){try{aud.pause()}catch{}aud.removeAttribute('src');aud.load()}
+      if(my===tok&&S.eng==='yt')dropStream(t.videoId);
+    }finally{busyBg=false}
+  }
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){
+      if(S.eng==='yt')want=S.playing;
+      if(S.eng==='yt'&&want)handoff();
+    }else{setSess();if(ctx&&ctx.state!=='running')ctx.resume().catch(()=>{})}
+  });
+  window.addEventListener('pagehide',()=>{if(S.eng==='yt'&&S.playing){want=true;handoff()}});
+  setInterval(()=>{
+    if(S.eng!=='yt')want=S.playing;
+    if(ctx&&ctx.state!=='running'&&S.eng!=='yt'&&!aud.paused)ctx.resume().catch(()=>{});
+    if(document.hidden){if(S.eng==='yt'&&(S.playing||want))handoff();return}
+    const t=S.cur;
+    if(S.eng==='yt'&&t&&t.videoId&&!S.official){
+      if(!streamCache[t.videoId]&&!warm[t.videoId]){warm[t.videoId]=1;getStream(t.videoId).catch(()=>{})}
+      const u=streamUrl[t.videoId];
+      if(u&&!busyBg&&aud.getAttribute('src')!==u){aud.preload='auto';aud.src=u;aud.load()}
+    }
+  },1000);
+})();
+</script>
+</body>
+</html>
